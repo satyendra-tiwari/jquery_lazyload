@@ -25,7 +25,8 @@
             effect          : "show",
             container       : window,
             data_attribute  : "original",
-            skip_invisible  : true,
+            data_srcset     : "srcset",
+            skip_invisible  : false,
             appear          : null,
             load            : null
         };
@@ -91,26 +92,42 @@
                         var elements_left = elements.length;
                         settings.appear.call(self, elements_left, settings);
                     }
-                    $("<img />")
-                        .bind("load", function() {
-                            $self
-                                .hide()
-                                .attr("src", $self.data(settings.data_attribute))
-                                [settings.effect](settings.effect_speed);
-                            self.loaded = true;
+                    if ($self.is('img')){
+                        $("<img />")
+                            .bind("load", function() {
+                                display_lazy(self);
+                            })
+                            .attr("src", $self.data(settings.data_attribute));
+                    } else if ($self.is('picture')){
+                        /* create temporary picture element with same sources as element */
+                        var $temp_element = $('<picture />');
+                        var $source_children = $self.children('source')
+                        var $img_child = $self.children('img').last();
+                        $source_children.each(function() {
+                            var $self = $(this);
+                            $temp_element.append($('<source />')
+                                .attr('type', $self.attr('type'))
+                                .attr('data-' + settings.data_srcset, $self.data(settings.data_srcset)
+                            ));
+                        });
+                        var $new_img_ele = $('<img />');
+                        $temp_element.append($new_img_ele.attr('data-'+settings.data_attribute, $img_child.data(settings.data_attribute)));
 
-                            /* Remove image from array so it is not looped next time. */
-                            var temp = $.grep(elements, function(element) {
-                                return !element.loaded;
-                            });
-                            elements = $(temp);
+                        /* bind with on the load event of image tag present inside temporay picture elment*/
+                        $new_img_ele.bind('load', function(){
+                            display_lazy(self, $img_child, $source_children)
+                        });
 
-                            if (settings.load) {
-                                var elements_left = elements.length;
-                                settings.load.call(self, elements_left, settings);
+                        /*  Load full picture element so as to avoid loading not required images */
+                        $temp_element.children().each(function(){
+                            var $self = $(this);
+                            if ($self.is('source')) {
+                                $self.attr('srcset', $self.data(settings.data_srcset));
+                            } else {
+                                $self.attr('src', $self.data(settings.data_attribute));
                             }
-                        })
-                        .attr("src", $self.data(settings.data_attribute));
+                        });
+                    }
                 }
             });
 
@@ -124,6 +141,30 @@
                 });
             }
         });
+        function display_lazy(self, $img_child, $source_children){
+            $self = $(self)
+            $img_child = $img_child || $self
+            $img_child.hide();
+            if ($source_children !== undefined){
+                $source_children.each(function() {
+                    var $self = $(this);
+                    $self.attr("srcset", $self.data(settings.data_srcset));
+                });
+            }
+            $img_child.attr("src", $img_child.data(settings.data_attribute));
+            $img_child[settings.effect](settings.effect_speed);
+            self.loaded = true;
+            /* Remove image from array so it is not looped next time. */
+            var temp = $.grep(elements, function(element) {
+                return !element.loaded;
+            });
+            elements = $(temp);
+
+            if (settings.load) {
+                var elements_left = elements.length;
+                settings.load.call(self, elements_left, settings);
+            }
+        }
 
         /* Check if something appears when window is resized. */
         $window.bind("resize", function(event) {
